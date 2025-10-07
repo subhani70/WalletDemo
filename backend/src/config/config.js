@@ -6,5 +6,5 @@ module.exports = {
   chainId: parseInt(process.env.CHAIN_ID) || 1337,
   registryAddress: process.env.REGISTRY_ADDRESS,
   privateKey: process.env.PRIVATE_KEY,
-  networkName: 'development'
+  networkName: 'VoltusWave'
 };

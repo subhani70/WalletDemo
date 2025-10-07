@@ -77,7 +77,7 @@ function App() {
         <ActivityLog logs={logs} />
       </main>
 
-      <ToastContainer 
+      <ToastContainer
         position="bottom-right"
         theme="dark"
         autoClose={3000}

@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const didService = require('../services/didService');
 const vcService = require('../services/vcService');
+const blockchainService = require('../services/blockchainService');
+const { ethers } = require('ethers');
 
 // Create DID
 router.post('/create-did', async (req, res) => {
@@ -47,19 +49,65 @@ router.get('/list-vc', (req, res) => {
 });
 
 // Create VP
+// router.post('/create-vp', async (req, res) => {
+//   try {
+//     const { holderDID, credentialIds, challenge } = req.body;
+    
+//     if (!holderDID || !credentialIds || !Array.isArray(credentialIds)) {
+//       return res.status(400).json({ 
+//         error: 'Missing required fields: holderDID, credentialIds (array)' 
+//       });
+//     }
+    
+//     const vp = await vcService.createPresentation(holderDID, credentialIds, challenge);
+//     res.json(vp);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+// Create VP - accepts full credentials instead of IDs
 router.post('/create-vp', async (req, res) => {
   try {
-    const { holderDID, credentialIds, challenge } = req.body;
+    const { holderDID, credentials, challenge } = req.body;
     
-    if (!holderDID || !credentialIds || !Array.isArray(credentialIds)) {
+    if (!holderDID || !credentials || !Array.isArray(credentials)) {
       return res.status(400).json({ 
-        error: 'Missing required fields: holderDID, credentialIds (array)' 
+        error: 'Missing required fields: holderDID, credentials (array of credential objects)' 
       });
     }
-    
-    const vp = await vcService.createPresentation(holderDID, credentialIds, challenge);
-    res.json(vp);
+
+    // Get the ethers signer
+    const ethersSigner = await blockchainService.getSigner();
+    const privateKey = ethersSigner.privateKey.slice(2);
+    const signer = require('did-jwt').ES256KSigner(Buffer.from(privateKey, 'hex'));
+
+    // Build VP payload with the provided credentials
+    const vpPayload = {
+      vp: {
+        "@context": ["https://www.w3.org/2018/credentials/v1"],
+        type: ["VerifiablePresentation"],
+        verifiableCredential: credentials.map(c => c.jwt) // Use JWT from each credential
+      }
+    };
+
+    // Add challenge/nonce if provided
+    if (challenge) {
+      vpPayload.nonce = challenge;
+    }
+
+    // Create holder object
+    const holder = {
+      did: holderDID,
+      signer: signer,
+      alg: 'ES256K'
+    };
+
+    const { createVerifiablePresentationJwt } = require('did-jwt-vc');
+    const vpJwt = await createVerifiablePresentationJwt(vpPayload, holder);
+
+    res.json({ vpJwt });
   } catch (err) {
+    console.error('Error in createPresentation:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -141,5 +189,48 @@ router.post('/verify-vp', async (req, res) => {
     });
   }
 });
+
+// ------------
+// Register DID from mobile wallet (client-side key generation)
+// Register DID from mobile wallet (client-side key generation)
+//7th oct
+// router.post('/register', async (req, res) => {
+//   try {
+//     const { did, publicKey, address } = req.body;
+
+//     if (!did || !publicKey || !address) {
+//       return res.status(400).json({ 
+//         error: 'Missing required fields: did, publicKey, address' 
+//       });
+//     }
+
+//     // Register on blockchain
+//     const registry = await blockchainService.getRegistry();
+    
+//     const attributeName = ethers.utils.formatBytes32String('did/pub/secp256k1/veriKey');
+//     const attributeValue = ethers.utils.hexlify(ethers.utils.toUtf8Bytes(publicKey));
+    
+//     const tx = await registry.setAttribute(
+//       address,
+//       attributeName,
+//       attributeValue,
+//       86400 * 365 // 1 year validity
+//     );
+    
+//     await tx.wait();
+
+//     res.json({
+//       success: true,
+//       did,
+//       address,
+//       txHash: tx.hash,
+//       message: 'DID registered on blockchain'
+//     });
+//   } catch (err) {
+//     console.error('Register error:', err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+//_____________
 
 module.exports = router;

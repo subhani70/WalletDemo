@@ -50,49 +50,90 @@ class DIDService {
   });
 }
 
+  // async createDID() {
+  //   try {
+  //     const signer = await blockchainService.getSigner();
+  //     const address = await signer.getAddress();
+      
+  //     const ethrDid = new EthrDID({
+  //       identifier: address,
+  //       provider: signer.provider,
+  //       signer: signer,
+  //       chainNameOrId: config.chainId,
+  //       registry: config.registryAddress
+  //     });
+
+  //     // Create DID document
+  //     const did = `did:ethr:${config.networkName}:${address}`;
+      
+  //     // Set a public key attribute on-chain (optional but recommended)
+  //     const registry = await blockchainService.getRegistry();
+      
+  //     // For ethers v5
+  //     const attributeName = ethers.utils.formatBytes32String('did/pub/secp256k1/veriKey');
+  //     const attributeValue = ethers.utils.hexlify(ethers.utils.toUtf8Bytes(address));
+      
+  //     const tx = await registry.setAttribute(
+  //       address,
+  //       attributeName,
+  //       attributeValue,
+  //       86400 * 365 // 1 year validity
+  //     );
+      
+  //     await tx.wait();
+
+  //     return {
+  //       did,
+  //       address,
+  //       txHash: tx.hash,
+  //       controller: address,
+  //       publicKey: address
+  //     };
+  //   } catch (error) {
+  //     throw new Error(`Failed to create DID: ${error.message}`);
+  //   }
+  // }
+
   async createDID() {
-    try {
-      const signer = await blockchainService.getSigner();
-      const address = await signer.getAddress();
-      
-      const ethrDid = new EthrDID({
-        identifier: address,
-        provider: signer.provider,
-        signer: signer,
-        chainNameOrId: config.chainId,
-        registry: config.registryAddress
-      });
+  try {
+    const signer = await blockchainService.getSigner();
+    const address = await signer.getAddress();
 
-      // Create DID document
-      const did = `did:ethr:${config.networkName}:${address}`;
-      
-      // Set a public key attribute on-chain (optional but recommended)
-      const registry = await blockchainService.getRegistry();
-      
-      // For ethers v5
-      const attributeName = ethers.utils.formatBytes32String('did/pub/secp256k1/veriKey');
-      const attributeValue = ethers.utils.hexlify(ethers.utils.toUtf8Bytes(address));
-      
-      const tx = await registry.setAttribute(
-        address,
-        attributeName,
-        attributeValue,
-        86400 * 365 // 1 year validity
-      );
-      
-      await tx.wait();
+    const ethrDid = new EthrDID({
+      identifier: address,
+      provider: signer.provider,
+      signer: signer,
+      chainNameOrId: config.chainId,
+      registry: config.registryAddress
+    });
 
-      return {
-        did,
-        address,
-        txHash: tx.hash,
-        controller: address,
-        publicKey: address
-      };
-    } catch (error) {
-      throw new Error(`Failed to create DID: ${error.message}`);
-    }
+    // Create DID with network name
+    const did = `did:ethr:${config.networkName}:${address}`; // ← Add network name
+    
+    const registry = await blockchainService.getRegistry();
+    const attributeName = ethers.utils.formatBytes32String('did/pub/secp256k1/veriKey');
+    const attributeValue = ethers.utils.hexlify(ethers.utils.toUtf8Bytes(address));
+    
+    const tx = await registry.setAttribute(
+      address,
+      attributeName,
+      attributeValue,
+      86400 * 365
+    );
+    
+    await tx.wait();
+
+    return {
+      did,
+      address,
+      txHash: tx.hash,
+      controller: address,
+      publicKey: address
+    };
+  } catch (error) {
+    throw new Error(`Failed to create DID: ${error.message}`);
   }
+}
 
   async resolveDID(did) {
     try {
