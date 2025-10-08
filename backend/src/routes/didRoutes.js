@@ -66,6 +66,51 @@ router.get('/list-vc', (req, res) => {
 //   }
 // });
 // Create VP - accepts full credentials instead of IDs
+// router.post('/create-vp', async (req, res) => {
+//   try {
+//     const { holderDID, credentials, challenge } = req.body;
+    
+//     if (!holderDID || !credentials || !Array.isArray(credentials)) {
+//       return res.status(400).json({ 
+//         error: 'Missing required fields: holderDID, credentials (array of credential objects)' 
+//       });
+//     }
+
+//     // Get the ethers signer
+//     const ethersSigner = await blockchainService.getSigner();
+//     const privateKey = ethersSigner.privateKey.slice(2);
+//     const signer = require('did-jwt').ES256KSigner(Buffer.from(privateKey, 'hex'));
+
+//     // Build VP payload with the provided credentials
+//     const vpPayload = {
+//       vp: {
+//         "@context": ["https://www.w3.org/2018/credentials/v1"],
+//         type: ["VerifiablePresentation"],
+//         verifiableCredential: credentials.map(c => c.jwt) // Use JWT from each credential
+//       }
+//     };
+
+//     // Add challenge/nonce if provided
+//     if (challenge) {
+//       vpPayload.nonce = challenge;
+//     }
+
+//     // Create holder object
+//     const holder = {
+//       did: holderDID,
+//       signer: signer,
+//       alg: 'ES256K'
+//     };
+
+//     const { createVerifiablePresentationJwt } = require('did-jwt-vc');
+//     const vpJwt = await createVerifiablePresentationJwt(vpPayload, holder);
+
+//     res.json({ vpJwt });
+//   } catch (err) {
+//     console.error('Error in createPresentation:', err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
 router.post('/create-vp', async (req, res) => {
   try {
     const { holderDID, credentials, challenge } = req.body;
@@ -76,30 +121,28 @@ router.post('/create-vp', async (req, res) => {
       });
     }
 
-    // Get the ethers signer
     const ethersSigner = await blockchainService.getSigner();
     const privateKey = ethersSigner.privateKey.slice(2);
-    const signer = require('did-jwt').ES256KSigner(Buffer.from(privateKey, 'hex'));
+    
+    // ✅ Use ES256K-R for signature recovery
+    const signer = require('did-jwt').ES256KSigner(Buffer.from(privateKey, 'hex'), true);
 
-    // Build VP payload with the provided credentials
     const vpPayload = {
       vp: {
         "@context": ["https://www.w3.org/2018/credentials/v1"],
         type: ["VerifiablePresentation"],
-        verifiableCredential: credentials.map(c => c.jwt) // Use JWT from each credential
+        verifiableCredential: credentials.map(c => c.jwt)
       }
     };
 
-    // Add challenge/nonce if provided
     if (challenge) {
       vpPayload.nonce = challenge;
     }
 
-    // Create holder object
     const holder = {
       did: holderDID,
       signer: signer,
-      alg: 'ES256K'
+      alg: 'ES256K-R' // ← Change from ES256K to ES256K-R
     };
 
     const { createVerifiablePresentationJwt } = require('did-jwt-vc');
@@ -275,41 +318,212 @@ router.post('/verify-vp', async (req, res) => {
 // });
 
 // Register DID from mobile wallet (client-side key generation)
-router.post('/register', async (req, res) => {
-  try {
-    const { did, publicKey, address } = req.body;
+// router.post('/register', async (req, res) => {
+//   try {
+//     const { did, publicKey, address } = req.body;
 
-    if (!did || !publicKey || !address) {
+//     if (!did || !publicKey || !address) {
+//       return res.status(400).json({ 
+//         error: 'Missing required fields: did, publicKey, address' 
+//       });
+//     }
+
+//     // Register on blockchain
+//     const registry = await blockchainService.getRegistry();
+    
+//     // For ethers v5
+//     const attributeName = ethers.utils.formatBytes32String('did/pub/secp256k1/veriKey');
+//     const attributeValue = ethers.utils.hexlify(ethers.utils.toUtf8Bytes(publicKey));
+    
+//     const tx = await registry.setAttribute(
+//       address, // Use the address directly, not the full DID
+//       attributeName,
+//       attributeValue,
+//       86400 * 365 // 1 year validity
+//     );
+    
+//     await tx.wait();
+
+//     res.json({
+//       success: true,
+//       did,
+//       address,
+//       txHash: tx.hash,
+//       message: 'DID registered on blockchain'
+//     });
+//   } catch (err) {
+//     console.error('Register error:', err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+
+
+// Register DID on blockchain (backend pays gas, user proves ownership)
+// router.post('/register-on-chain', async (req, res) => {
+//   try {
+//     const { did, publicKey, address, signature, message } = req.body;
+
+//     if (!did || !publicKey || !address || !signature || !message) {
+//       return res.status(400).json({ 
+//         error: 'Missing required fields' 
+//       });
+//     }
+
+//     console.log('📥 Registration request received');
+//     console.log('   DID:', did);
+//     console.log('   Address:', address);
+
+//     // Verify signature to prove user owns the private key
+//     const recoveredAddress = ethers.utils.verifyMessage(message, signature);
+    
+//     if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
+//       console.log('❌ Signature verification failed');
+//       console.log('   Expected:', address);
+//       console.log('   Recovered:', recoveredAddress);
+//       return res.status(401).json({ error: 'Invalid signature' });
+//     }
+
+//     console.log('✅ Signature verified');
+
+//     // Get registry contract
+//     const registry = await blockchainService.getRegistry();
+    
+//     // Prepare attribute data
+//     const attributeName = ethers.utils.formatBytes32String('did/pub/secp256k1/veriKey');
+//     const attributeValue = ethers.utils.hexlify(ethers.utils.toUtf8Bytes(publicKey));
+    
+//     console.log('📝 Submitting transaction to blockchain...');
+    
+//     // Backend submits transaction (backend pays gas)
+//     const tx = await registry.setAttribute(
+//       address,
+//       attributeName,
+//       attributeValue,
+//       86400 * 365,
+//       {
+//         gasLimit: 200000
+//       }
+//     );
+    
+//     console.log('⏳ Waiting for confirmation...');
+//     console.log('   TX Hash:', tx.hash);
+    
+//     // Wait for confirmation
+//     const receipt = await tx.wait();
+    
+//     console.log('✅ Transaction confirmed!');
+//     console.log('   Block:', receipt.blockNumber);
+
+//     res.json({
+//       success: true,
+//       txHash: receipt.transactionHash,
+//       blockNumber: receipt.blockNumber,
+//       message: 'DID registered on blockchain'
+//     });
+
+//   } catch (err) {
+//     console.error('❌ Registration failed:', err.message);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+router.post('/register-on-chain', async (req, res) => {
+  try {
+    const { did, publicKey, address, signature, message } = req.body;
+
+    if (!did || !publicKey || !address || !signature || !message) {
       return res.status(400).json({ 
-        error: 'Missing required fields: did, publicKey, address' 
+        error: 'Missing required fields' 
       });
     }
 
-    // Register on blockchain
+    console.log('📥 Registration request received');
+    console.log('   DID:', did);
+    console.log('   Address:', address);
+    console.log('   Public Key:', publicKey);
+
+    // Verify signature
+    const recoveredAddress = ethers.utils.verifyMessage(message, signature);
+    
+    if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    console.log('✅ Signature verified');
+
     const registry = await blockchainService.getRegistry();
     
-    // For ethers v5
-    const attributeName = ethers.utils.formatBytes32String('did/pub/secp256k1/veriKey');
-    const attributeValue = ethers.utils.hexlify(ethers.utils.toUtf8Bytes(publicKey));
+    // ✅ FIX: Store the public key in the correct format
+    const attributeName = ethers.utils.formatBytes32String('did/pub/Secp256k1/veriKey');
+    
+    // Remove 0x prefix if present and convert to bytes
+    const cleanPublicKey = publicKey.startsWith('0x') ? publicKey.slice(2) : publicKey;
+    
+    // The public key should be stored as raw bytes, not as a UTF-8 string
+    const attributeValue = '0x' + cleanPublicKey;
+    
+    console.log('📝 Submitting transaction to blockchain...');
+    console.log('   Attribute name:', attributeName);
+    console.log('   Attribute value length:', attributeValue.length);
     
     const tx = await registry.setAttribute(
-      address, // Use the address directly, not the full DID
+      address,
       attributeName,
-      attributeValue,
-      86400 * 365 // 1 year validity
+      attributeValue,  // Raw bytes, not UTF-8 encoded
+      86400 * 365,
+      {
+        gasLimit: 200000
+      }
     );
     
-    await tx.wait();
+    console.log('⏳ Waiting for confirmation...');
+    console.log('   TX Hash:', tx.hash);
+    
+    const receipt = await tx.wait();
+    
+    console.log('✅ Transaction confirmed!');
+    console.log('   Block:', receipt.blockNumber);
 
     res.json({
       success: true,
-      did,
-      address,
-      txHash: tx.hash,
-      message: 'DID registered on blockchain'
+      txHash: receipt.transactionHash,
+      blockNumber: receipt.blockNumber,
+      message: 'DID registered on blockchain successfully'
     });
+
   } catch (err) {
-    console.error('Register error:', err);
+    console.error('❌ Registration failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Check if DID is registered on blockchain
+router.get('/check-registration/:address', async (req, res) => {
+  try {
+    const { address } = req.params;
+
+    if (!address) {
+      return res.status(400).json({ error: 'Address required' });
+    }
+
+    const registry = await blockchainService.getRegistry();
+    const lastChanged = await registry.changed(address);
+
+    if (lastChanged.gt(0)) {
+      res.json({
+        registered: true,
+        blockNumber: lastChanged.toString(),
+        address
+      });
+    } else {
+      res.json({
+        registered: false,
+        address
+      });
+    }
+
+  } catch (err) {
+    console.error('Check registration error:', err);
     res.status(500).json({ error: err.message });
   }
 });
