@@ -129,39 +129,70 @@ class VCService {
   //   }
   // }
 
-  async verifyPresentation(vpJwt, challenge) {
-  console.log('=== vcService.verifyPresentation called ===');
+//   async verifyPresentation(vpJwt, challenge) {
+//   console.log('=== vcService.verifyPresentation called ===');
+  
+//   try {
+//     if (!vpJwt) {
+//       throw new Error('VP JWT is required');
+//     }
+    
+//     console.log('Getting resolver...');
+//     const resolver = await didService.getResolver();
+    
+//     console.log('Setting up options...');
+//     const options = {};
+//     if (challenge !== undefined && challenge !== null && challenge !== '') {
+//       options.challenge = challenge;
+//       console.log('Using challenge:', challenge);
+//     } else {
+//       console.log('No challenge provided');
+//     }
+    
+//     console.log('Calling did-jwt-vc verifyPresentation...');
+//     const result = await verifyPresentation(vpJwt, resolver, options);
+    
+//     console.log('Verification complete. Verified:', result.verified);
+//     return result;
+    
+//   } catch (err) {
+//     console.error('=== verifyPresentation error ===');
+//     console.error('Error name:', err.name);
+//     console.error('Error message:', err.message);
+//     console.error('Error stack:', err.stack);
+    
+//     // Don't throw, return error result
+//     return {
+//       verified: false,
+//       error: err.message
+//     };
+//   }
+// }
+// In vcService.verifyPresentation
+async verifyPresentation(vpJwt, challenge) {
+  console.log('=== Verifying Presentation ===');
   
   try {
-    if (!vpJwt) {
-      throw new Error('VP JWT is required');
-    }
+    // Decode JWT to see the payload
+    const decoded = require('did-jwt').decodeJWT(vpJwt);
+    console.log('VP Issuer:', decoded.payload.iss);
+    console.log('VP Subject:', decoded.payload.sub);
     
-    console.log('Getting resolver...');
     const resolver = await didService.getResolver();
     
-    console.log('Setting up options...');
-    const options = {};
-    if (challenge !== undefined && challenge !== null && challenge !== '') {
-      options.challenge = challenge;
-      console.log('Using challenge:', challenge);
-    } else {
-      console.log('No challenge provided');
-    }
+    // Try to resolve the issuer DID
+    console.log('Resolving issuer DID...');
+    const issuerDoc = await resolver.resolve(decoded.payload.iss);
+    console.log('Issuer resolved:', issuerDoc.didDocument ? 'Yes' : 'No');
     
-    console.log('Calling did-jwt-vc verifyPresentation...');
+    const options = challenge ? { challenge } : {};
     const result = await verifyPresentation(vpJwt, resolver, options);
     
-    console.log('Verification complete. Verified:', result.verified);
+    console.log('Verification result:', result);
     return result;
     
   } catch (err) {
-    console.error('=== verifyPresentation error ===');
-    console.error('Error name:', err.name);
-    console.error('Error message:', err.message);
-    console.error('Error stack:', err.stack);
-    
-    // Don't throw, return error result
+    console.error('Verification error:', err);
     return {
       verified: false,
       error: err.message

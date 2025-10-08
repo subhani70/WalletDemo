@@ -233,4 +233,85 @@ router.post('/verify-vp', async (req, res) => {
 // });
 //_____________
 
+// router.post('/register', async (req, res) => {
+//   try {
+//     const { did, publicKey, address } = req.body;
+
+//     if (!did || !publicKey || !address) {
+//       return res.status(400).json({ 
+//         error: 'Missing required fields: did, publicKey, address' 
+//       });
+//     }
+
+//     // Extract address from DID if needed
+//     const identityAddress = did.split(':').pop();
+
+//     // Register on blockchain
+//     const registry = await blockchainService.getRegistry();
+    
+//     const attributeName = ethers.utils.formatBytes32String('did/pub/secp256k1/veriKey');
+//     const attributeValue = ethers.utils.hexlify(ethers.utils.toUtf8Bytes(publicKey));
+    
+//     const tx = await registry.setAttribute(
+//       identityAddress, // Use extracted address
+//       attributeName,
+//       attributeValue,
+//       86400 * 365 // 1 year validity
+//     );
+    
+//     await tx.wait();
+
+//     res.json({
+//       success: true,
+//       did,
+//       address: identityAddress,
+//       txHash: tx.hash,
+//       message: 'DID registered on blockchain'
+//     });
+//   } catch (err) {
+//     console.error('Register error:', err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// Register DID from mobile wallet (client-side key generation)
+router.post('/register', async (req, res) => {
+  try {
+    const { did, publicKey, address } = req.body;
+
+    if (!did || !publicKey || !address) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: did, publicKey, address' 
+      });
+    }
+
+    // Register on blockchain
+    const registry = await blockchainService.getRegistry();
+    
+    // For ethers v5
+    const attributeName = ethers.utils.formatBytes32String('did/pub/secp256k1/veriKey');
+    const attributeValue = ethers.utils.hexlify(ethers.utils.toUtf8Bytes(publicKey));
+    
+    const tx = await registry.setAttribute(
+      address, // Use the address directly, not the full DID
+      attributeName,
+      attributeValue,
+      86400 * 365 // 1 year validity
+    );
+    
+    await tx.wait();
+
+    res.json({
+      success: true,
+      did,
+      address,
+      txHash: tx.hash,
+      message: 'DID registered on blockchain'
+    });
+  } catch (err) {
+    console.error('Register error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

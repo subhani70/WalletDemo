@@ -135,14 +135,32 @@ class DIDService {
   }
 }
 
-  async resolveDID(did) {
-    try {
-      const didDocument = await this.resolver.resolve(did);
-      return didDocument;
-    } catch (error) {
-      throw new Error(`Failed to resolve DID: ${error.message}`);
+  // async resolveDID(did) {
+  //   try {
+  //     const didDocument = await this.resolver.resolve(did);
+  //     return didDocument;
+  //   } catch (error) {
+  //     throw new Error(`Failed to resolve DID: ${error.message}`);
+  //   }
+  // }
+
+  // In backend didService.js
+async resolveDID(did) {
+  try {
+    // Handle both formats
+    if (!did.includes(config.networkName)) {
+      // Convert did:ethr:0x... to did:ethr:VoltusWave:0x...
+      const parts = did.split(':');
+      if (parts.length === 3) {
+        did = `${parts[0]}:${parts[1]}:${config.networkName}:${parts[2]}`;
+      }
     }
+    const didDocument = await this.resolver.resolve(did);
+    return didDocument;
+  } catch (error) {
+    throw new Error(`Failed to resolve DID: ${error.message}`);
   }
+}
 
   async updateDIDAttribute(did, attributeName, attributeValue, validity = 86400 * 365) {
     try {
