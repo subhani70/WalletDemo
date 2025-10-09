@@ -140,7 +140,7 @@ class VCService {
       const holder = {
         did: holderDID,
         signer: signer,
-        alg: 'ES256K'
+        alg: 'ES256K-R'
       };
 
       const vpJwt = await createVerifiablePresentationJwt(vpPayload, holder);
