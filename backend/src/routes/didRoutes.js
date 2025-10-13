@@ -4,6 +4,7 @@ const didService = require('../services/didService');
 const vcService = require('../services/vcService');
 const blockchainService = require('../services/blockchainService');
 const { ethers } = require('ethers');
+const { Buffer } = require('buffer');
 
 // Create DID
 router.post('/create-did', async (req, res) => {
@@ -527,5 +528,94 @@ router.get('/check-registration/:address', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// Issue credential to holder (called after QR scan)
+router.post('/issue-to-holder', async (req, res) => {
+  try {
+    const { holderDID, credentialData } = req.body;
+
+    if (!holderDID || !credentialData) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: holderDID, credentialData' 
+      });
+    }
+
+    console.log('📜 Issuing credential to holder');
+    console.log('   Holder DID:', holderDID);
+    console.log('   Credential Type:', credentialData.credentialType);
+
+    // Get backend signer (issuer)
+    const ethersSigner = await blockchainService.getSigner();
+    const issuerAddress = await ethersSigner.getAddress();
+    const issuerDID = `did:ethr:VoltusWave:${issuerAddress.toLowerCase()}`;
+
+    console.log('   Issuer DID:', issuerDID);
+
+    // Create credential signed by backend (issuer)
+    const privateKey = ethersSigner.privateKey.slice(2);
+    const { ES256KSigner } = require('did-jwt');
+    const signer = ES256KSigner(Buffer.from(privateKey, 'hex'));
+
+    const vcPayload = {
+      sub: holderDID,
+      nbf: Math.floor(Date.now() / 1000),
+      vc: {
+        "@context": ["https://www.w3.org/2018/credentials/v1"],
+        type: ["VerifiableCredential"],
+        credentialSubject: credentialData
+      }
+    };
+
+    const issuer = {
+      did: issuerDID,
+      signer: signer,
+      alg: 'ES256K'
+    };
+
+    const { createVerifiableCredentialJwt } = require('did-jwt-vc');
+    const jwt = await createVerifiableCredentialJwt(vcPayload, issuer);
+
+    console.log('✅ Credential issued successfully');
+
+    const credential = {
+      id: Date.now().toString(),
+      issuer: issuerDID,
+      subject: holderDID,
+      data: credentialData,
+      jwt: jwt,
+      issuedAt: new Date().toISOString()
+    };
+
+    res.json({
+      success: true,
+      credential: credential,
+      message: 'Credential issued successfully'
+    });
+
+  } catch (err) {
+    console.error('❌ Failed to issue credential:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get issuer info
+router.get('/issuer-info', async (req, res) => {
+  try {
+    const ethersSigner = await blockchainService.getSigner();
+    const issuerAddress = await ethersSigner.getAddress();
+    const issuerDID = `did:ethr:VoltusWave:${issuerAddress.toLowerCase()}`;
+
+    res.json({
+      did: issuerDID,
+      address: issuerAddress,
+      name: 'VoltusWave Credential Issuer',
+      type: 'Trusted Authority'
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 module.exports = router;

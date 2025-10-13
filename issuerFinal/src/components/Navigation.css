@@ -1,0 +1,34 @@
+/* src/components/Navigation.css */
+.nav {
+  background-color: white;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0 32px;
+}
+
+.nav-button {
+  padding: 16px 24px;
+  background-color: transparent;
+  border: none;
+  font-size: 15px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s;
+}
+
+.nav-button:hover {
+  color: #667eea;
+}
+
+.nav-button.active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+}
+
+.nav-icon {
+  font-size: 18px;
+}

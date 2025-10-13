@@ -3,6 +3,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const config = require('./config/config');
 const didRoutes = require('./routes/didRoutes');
+const issuerRoutes = require('./routes/issuerRoutes');
 
 const app = express();
 
@@ -13,7 +14,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Mount routes
 app.use('/', didRoutes);
-
+app.use('/issuer', issuerRoutes);
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
