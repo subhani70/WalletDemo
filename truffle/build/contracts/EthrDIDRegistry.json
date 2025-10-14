@@ -15094,10 +15094,16 @@
       "links": {},
       "address": "0xe78A0F7E598Cc8b0Bb87894B0F60dD2a88d6a8Ab",
       "transactionHash": "0xd64eb9f0ecf926ae919467ef62df73427da85f81ac2d0ab7200c37c74282fa4d"
+    },
+    "1760419562000": {
+      "events": {},
+      "links": {},
+      "address": "0xe78A0F7E598Cc8b0Bb87894B0F60dD2a88d6a8Ab",
+      "transactionHash": "0xd64eb9f0ecf926ae919467ef62df73427da85f81ac2d0ab7200c37c74282fa4d"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-10-11T08:57:18.612Z",
+  "updatedAt": "2025-10-14T05:27:06.585Z",
   "networkType": "ethereum",
   "devdoc": {
     "details": "ERC-1056 compliant DID registry  KEY PRINCIPLES: 1. setAttribute is PUBLIC - anyone can add attributes for any DID 2. Only identity owner can change ownership or revoke attributes 3. This allows third parties to vouch for/attest to identities 4. Follows the \"anyone can write, but it's signed\" model",

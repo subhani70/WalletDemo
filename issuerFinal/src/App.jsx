@@ -4,7 +4,7 @@ import Header from './components/Header';
 import Navigation from './components/Navigation';
 import Dashboard from './components/Dashboard';
 import StudentsTable from './components/StudentsTable';
-import QRModal from './components/QRModal';
+import SecureQRModal from './components/SecureQRModal';
 import AddStudentForm from './components/AddStudentForm';
 import { fetchIssuerInfo } from './services/api';
 import './App.css';
@@ -106,9 +106,9 @@ function App() {
         )}
       </main>
 
-      {/* QR Code Modal */}
+      {/* Secure QR Code Modal */}
       {showQRModal && (
-        <QRModal
+        <SecureQRModal
           student={selectedStudent}
           issuerInfo={issuerInfo}
           onClose={handleCloseModal}
