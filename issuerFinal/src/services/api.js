@@ -1,7 +1,9 @@
 // src/services/api.js
 
 // YOUR BACKEND URL
-const API_BASE_URL = 'http://172.16.10.117:5000';
+// const API_BASE_URL = 'http://172.16.10.117:5000';
+const API_BASE_URL = 'http://localhost:5000';
+
 
 /**
  * Fetch issuer information from backend
@@ -9,11 +11,11 @@ const API_BASE_URL = 'http://172.16.10.117:5000';
 export async function fetchIssuerInfo() {
   try {
     const response = await fetch(`${API_BASE_URL}/issuer-info`);
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
     const data = await response.json();
     return data;
   } catch (error) {
@@ -28,11 +30,11 @@ export async function fetchIssuerInfo() {
 export async function checkHealth() {
   try {
     const response = await fetch(`${API_BASE_URL}/health`);
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
     const data = await response.json();
     return data;
   } catch (error) {
@@ -57,11 +59,11 @@ export async function issueCredentialToHolder(holderDID, credentialData) {
         credentialData,
       }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
     const data = await response.json();
     return data;
   } catch (error) {

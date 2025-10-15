@@ -15100,10 +15100,28 @@
       "links": {},
       "address": "0xe78A0F7E598Cc8b0Bb87894B0F60dD2a88d6a8Ab",
       "transactionHash": "0xd64eb9f0ecf926ae919467ef62df73427da85f81ac2d0ab7200c37c74282fa4d"
+    },
+    "1760458443847": {
+      "events": {},
+      "links": {},
+      "address": "0xe78A0F7E598Cc8b0Bb87894B0F60dD2a88d6a8Ab",
+      "transactionHash": "0xd64eb9f0ecf926ae919467ef62df73427da85f81ac2d0ab7200c37c74282fa4d"
+    },
+    "1760506733423": {
+      "events": {},
+      "links": {},
+      "address": "0x5b1869D9A4C187F2EAa108f3062412ecf0526b24",
+      "transactionHash": "0x8b5796428f843b00144c9238c32a188eade4776449af825308509541e6e9d333"
+    },
+    "1760511697134": {
+      "events": {},
+      "links": {},
+      "address": "0xe78A0F7E598Cc8b0Bb87894B0F60dD2a88d6a8Ab",
+      "transactionHash": "0xd64eb9f0ecf926ae919467ef62df73427da85f81ac2d0ab7200c37c74282fa4d"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-10-14T05:27:06.585Z",
+  "updatedAt": "2025-10-15T07:01:58.197Z",
   "networkType": "ethereum",
   "devdoc": {
     "details": "ERC-1056 compliant DID registry  KEY PRINCIPLES: 1. setAttribute is PUBLIC - anyone can add attributes for any DID 2. Only identity owner can change ownership or revoke attributes 3. This allows third parties to vouch for/attest to identities 4. Follows the \"anyone can write, but it's signed\" model",
