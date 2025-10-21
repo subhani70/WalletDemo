@@ -4,13 +4,14 @@ const bodyParser = require('body-parser');
 const config = require('./config/config');
 const didRoutes = require('./routes/didRoutes');
 const issuerRoutes = require('./routes/issuerRoutes');
-
+const verifierRoutes = require('./routes/verifierRoutes');
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use('/verifier', verifierRoutes);
 
 // Mount routes
 app.use('/', didRoutes);

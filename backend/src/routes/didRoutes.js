@@ -1,5 +1,5 @@
 // backend/routes/didRoutes.js
-// FIXED: Add DID validation before credential operations
+// FIXED: Auto-mark as issued and prevent duplicate claims
 
 const express = require('express');
 const router = express.Router();
@@ -9,29 +9,38 @@ const blockchainService = require('../services/blockchainService');
 const { ethers } = require('ethers');
 const { Buffer } = require('buffer');
 
-// In-memory storage for claim tokens (use Redis in production)
+// In-memory storage for claim tokens
 const claimTokens = new Map();
+
+// ✅ NEW: Store issued credentials to track duplicates
+const issuedCredentials = new Map(); // studentId -> { credential, claimedAt, claimedBy }
 
 // Clean up expired tokens every minute
 setInterval(() => {
   const now = Date.now();
+  
+  // Clean expired tokens
   for (const [tokenId, token] of claimTokens.entries()) {
     if (token.expiresAt < now) {
       claimTokens.delete(tokenId);
       console.log(`🗑️ Expired claim token: ${tokenId}`);
     }
   }
+  
+  // Clean old issued credentials (keep for 24 hours for audit)
+  for (const [studentId, issued] of issuedCredentials.entries()) {
+    if (now - issued.claimedAt > 86400000) { // 24 hours
+      issuedCredentials.delete(studentId);
+      console.log(`🗑️ Cleaned old issued record: ${studentId}`);
+    }
+  }
 }, 60000);
 
-// ============================================
-// HELPER FUNCTION: Check if DID is registered
-// ============================================
+// Helper function: Check if DID is registered
 async function isDIDRegistered(address) {
   try {
     const registry = await blockchainService.getRegistry();
     const lastChanged = await registry.changed(address);
-    
-    // If changed > 0, it means the DID has been registered
     return lastChanged.gt(0);
   } catch (error) {
     console.error('Error checking DID registration:', error);
@@ -39,16 +48,12 @@ async function isDIDRegistered(address) {
   }
 }
 
-// ============================================
-// HELPER FUNCTION: Extract address from DID
-// ============================================
+// Helper function: Extract address from DID
 function extractAddressFromDID(did) {
-  // Format: did:ethr:VoltusWave:0xABC...
   const parts = did.split(':');
   if (parts.length >= 4) {
-    return parts[3]; // Return the address part
+    return parts[3];
   }
-  // Fallback for did:ethr:0xABC...
   if (parts.length === 3) {
     return parts[2];
   }
@@ -86,25 +91,21 @@ router.post('/store-vc', async (req, res) => {
       });
     }
 
-    // ✅ FIX: Validate issuer DID is registered
     const issuerAddress = extractAddressFromDID(issuerDID);
     const issuerRegistered = await isDIDRegistered(issuerAddress);
     
     if (!issuerRegistered) {
       return res.status(403).json({
-        error: 'Issuer DID is not registered on blockchain. Please register your DID first.',
-        issuerDID: issuerDID
+        error: 'Issuer DID is not registered on blockchain.'
       });
     }
 
-    // ✅ FIX: Validate subject DID is registered
     const subjectAddress = extractAddressFromDID(subjectDID);
     const subjectRegistered = await isDIDRegistered(subjectAddress);
     
     if (!subjectRegistered) {
       return res.status(403).json({
-        error: 'Subject DID is not registered on blockchain. Please register your DID first.',
-        subjectDID: subjectDID
+        error: 'Subject DID is not registered on blockchain.'
       });
     }
 
@@ -127,18 +128,16 @@ router.post('/create-vp', async (req, res) => {
 
     if (!holderDID || !credentials || !Array.isArray(credentials)) {
       return res.status(400).json({
-        error: 'Missing required fields: holderDID, credentials (array of credential objects)'
+        error: 'Missing required fields'
       });
     }
 
-    // ✅ FIX: Validate holder DID is registered
     const holderAddress = extractAddressFromDID(holderDID);
     const holderRegistered = await isDIDRegistered(holderAddress);
     
     if (!holderRegistered) {
       return res.status(403).json({
-        error: 'Holder DID is not registered on blockchain. Cannot create presentation.',
-        holderDID: holderDID
+        error: 'Holder DID is not registered on blockchain.'
       });
     }
 
@@ -197,26 +196,14 @@ router.post('/verify-vp', async (req, res) => {
   try {
     const { vpJwt, challenge } = req.body;
 
-    console.log('Request body:', {
-      vpJwt: vpJwt ? `${vpJwt.substring(0, 50)}...` : 'undefined',
-      challenge: challenge
-    });
-
     if (!vpJwt) {
-      console.log('Error: Missing vpJwt');
       return res.status(400).json({ error: 'Missing required field: vpJwt' });
     }
 
-    console.log('Calling vcService.verifyPresentation...');
-
     try {
       const result = await vcService.verifyPresentation(vpJwt, challenge);
-      console.log('Verification successful:', result);
       res.json(result);
     } catch (serviceError) {
-      console.error('Service error:', serviceError.message);
-      console.error('Stack:', serviceError.stack);
-
       res.status(400).json({
         error: serviceError.message,
         verified: false
@@ -224,9 +211,6 @@ router.post('/verify-vp', async (req, res) => {
     }
 
   } catch (err) {
-    console.error('Route handler error:', err.message);
-    console.error('Stack:', err.stack);
-
     res.status(500).json({
       error: 'Internal server error: ' + err.message,
       verified: false
@@ -234,7 +218,7 @@ router.post('/verify-vp', async (req, res) => {
   }
 });
 
-// Register DID on blockchain (backend pays gas, user proves ownership)
+// Register DID on blockchain
 router.post('/register-on-chain', async (req, res) => {
   try {
     const { did, publicKey, address, signature, message } = req.body;
@@ -246,11 +230,7 @@ router.post('/register-on-chain', async (req, res) => {
     }
 
     console.log('📥 Registration request received');
-    console.log('   DID:', did);
-    console.log('   Address:', address);
-    console.log('   Public Key:', publicKey);
 
-    // ✅ CHECK: DID already registered?
     const alreadyRegistered = await isDIDRegistered(address);
     if (alreadyRegistered) {
       return res.status(409).json({
@@ -260,7 +240,6 @@ router.post('/register-on-chain', async (req, res) => {
       });
     }
 
-    // Verify signature
     const recoveredAddress = ethers.utils.verifyMessage(message, signature);
 
     if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
@@ -270,16 +249,9 @@ router.post('/register-on-chain', async (req, res) => {
     console.log('✅ Signature verified');
 
     const registry = await blockchainService.getRegistry();
-
     const attributeName = ethers.utils.formatBytes32String('did/pub/Secp256k1/veriKey');
-
-    // Remove 0x prefix if present and convert to bytes
     const cleanPublicKey = publicKey.startsWith('0x') ? publicKey.slice(2) : publicKey;
     const attributeValue = '0x' + cleanPublicKey;
-
-    console.log('📝 Submitting transaction to blockchain...');
-    console.log('   Attribute name:', attributeName);
-    console.log('   Attribute value length:', attributeValue.length);
 
     const tx = await registry.setAttribute(
       address,
@@ -291,13 +263,9 @@ router.post('/register-on-chain', async (req, res) => {
       }
     );
 
-    console.log('⏳ Waiting for confirmation...');
-    console.log('   TX Hash:', tx.hash);
-
     const receipt = await tx.wait();
 
     console.log('✅ Transaction confirmed!');
-    console.log('   Block:', receipt.blockNumber);
 
     res.json({
       success: true,
@@ -343,87 +311,6 @@ router.get('/check-registration/:address', async (req, res) => {
   }
 });
 
-// Issue credential to holder (called after QR scan)
-router.post('/issue-to-holder', async (req, res) => {
-  try {
-    const { holderDID, credentialData } = req.body;
-
-    if (!holderDID || !credentialData) {
-      return res.status(400).json({
-        error: 'Missing required fields: holderDID, credentialData'
-      });
-    }
-
-    console.log('📜 Issuing credential to holder');
-    console.log('   Holder DID:', holderDID);
-    console.log('   Credential Type:', credentialData.credentialType);
-
-    // ✅ FIX: Validate holder DID is registered
-    const holderAddress = extractAddressFromDID(holderDID);
-    const holderRegistered = await isDIDRegistered(holderAddress);
-    
-    if (!holderRegistered) {
-      return res.status(403).json({
-        error: 'Holder DID is not registered on blockchain. Please register your DID first.',
-        holderDID: holderDID,
-        hint: 'Open your wallet and create your identity first'
-      });
-    }
-
-    // Get backend signer (issuer)
-    const ethersSigner = await blockchainService.getSigner();
-    const issuerAddress = await ethersSigner.getAddress();
-    const issuerDID = `did:ethr:VoltusWave:${issuerAddress.toLowerCase()}`;
-
-    console.log('   Issuer DID:', issuerDID);
-
-    // Create credential signed by backend (issuer)
-    const privateKey = ethersSigner.privateKey.slice(2);
-    const { ES256KSigner } = require('did-jwt');
-    const signer = ES256KSigner(Buffer.from(privateKey, 'hex'));
-
-    const vcPayload = {
-      sub: holderDID,
-      nbf: Math.floor(Date.now() / 1000),
-      vc: {
-        "@context": ["https://www.w3.org/2018/credentials/v1"],
-        type: ["VerifiableCredential"],
-        credentialSubject: credentialData
-      }
-    };
-
-    const issuer = {
-      did: issuerDID,
-      signer: signer,
-      alg: 'ES256K'
-    };
-
-    const { createVerifiableCredentialJwt } = require('did-jwt-vc');
-    const jwt = await createVerifiableCredentialJwt(vcPayload, issuer);
-
-    console.log('✅ Credential issued successfully');
-
-    const credential = {
-      id: Date.now().toString(),
-      issuer: issuerDID,
-      subject: holderDID,
-      data: credentialData,
-      jwt: jwt,
-      issuedAt: new Date().toISOString()
-    };
-
-    res.json({
-      success: true,
-      credential: credential,
-      message: 'Credential issued successfully'
-    });
-
-  } catch (err) {
-    console.error('❌ Failed to issue credential:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Get issuer info
 router.get('/issuer-info', async (req, res) => {
   try {
@@ -452,6 +339,18 @@ router.post('/store-claim-token', async (req, res) => {
       return res.status(400).json({ error: 'Invalid claim token' });
     }
 
+    // ✅ CHECK: Has this student already claimed a credential?
+    const studentId = claimToken.studentId;
+    if (issuedCredentials.has(studentId)) {
+      const issued = issuedCredentials.get(studentId);
+      return res.status(409).json({
+        error: 'Credential already issued to this student',
+        studentId: studentId,
+        issuedAt: issued.claimedAt,
+        claimedBy: issued.claimedBy
+      });
+    }
+
     // Store token with metadata
     claimTokens.set(claimToken.id, {
       ...claimToken,
@@ -460,8 +359,8 @@ router.post('/store-claim-token', async (req, res) => {
     });
 
     console.log('✅ Claim token stored:', claimToken.id);
+    console.log('   Student ID:', studentId);
     console.log('   Expires at:', new Date(claimToken.expiresAt).toISOString());
-    console.log('   Total active tokens:', claimTokens.size);
 
     res.json({
       success: true,
@@ -474,7 +373,7 @@ router.post('/store-claim-token', async (req, res) => {
   }
 });
 
-// ENDPOINT 2: Claim credential (SECURE)
+// ENDPOINT 2: Claim credential (SECURE + AUTO-MARK)
 router.post('/claim-credential', async (req, res) => {
   try {
     const { claimToken, holderDID } = req.body;
@@ -488,20 +387,30 @@ router.post('/claim-credential', async (req, res) => {
     console.log('📥 Claim request received');
     console.log('   Token ID:', claimToken.id);
     console.log('   Holder DID:', holderDID);
+    console.log('   Student ID:', claimToken.studentId);
 
-    // ✅ FIX: FIRST CHECK - Holder DID must be registered
+    // ✅ CHECK 1: Has this student already claimed?
+    if (issuedCredentials.has(claimToken.studentId)) {
+      const issued = issuedCredentials.get(claimToken.studentId);
+      console.log('❌ Student already has credential');
+      return res.status(409).json({
+        error: 'You have already claimed this credential.',
+        claimedAt: issued.claimedAt,
+        claimedBy: issued.claimedBy
+      });
+    }
+
+    // CHECK 2: Holder DID registered?
     const holderAddress = extractAddressFromDID(holderDID);
     const holderRegistered = await isDIDRegistered(holderAddress);
     
     if (!holderRegistered) {
       return res.status(403).json({
-        error: 'Your DID is not registered on blockchain. Please create your identity first.',
-        holderDID: holderDID,
-        hint: 'Go to Home screen and click "Create Your Identity"'
+        error: 'Your DID is not registered on blockchain. Please create your identity first.'
       });
     }
 
-    // SECURITY: Verify claim token exists
+    // CHECK 3: Token exists?
     if (!claimTokens.has(claimToken.id)) {
       console.log('❌ Invalid or already used token');
       return res.status(400).json({
@@ -511,7 +420,7 @@ router.post('/claim-credential', async (req, res) => {
 
     const storedToken = claimTokens.get(claimToken.id);
 
-    // SECURITY: Check expiration
+    // CHECK 4: Expired?
     if (Date.now() > storedToken.expiresAt) {
       claimTokens.delete(claimToken.id);
       console.log('❌ Claim token expired');
@@ -520,7 +429,7 @@ router.post('/claim-credential', async (req, res) => {
       });
     }
 
-    // SECURITY: Verify nonce (prevent tampering)
+    // CHECK 5: Nonce matches?
     if (storedToken.nonce !== claimToken.nonce) {
       console.log('❌ Token tampering detected');
       return res.status(400).json({
@@ -528,22 +437,17 @@ router.post('/claim-credential', async (req, res) => {
       });
     }
 
-    // SECURITY: Verify DID matches (if pre-registered)
+    // CHECK 6: DID matches?
     if (storedToken.requiredDID && storedToken.requiredDID !== holderDID) {
       console.log('❌ DID mismatch');
-      console.log('   Expected:', storedToken.requiredDID);
-      console.log('   Received:', holderDID);
       return res.status(403).json({
         error: 'This credential is intended for a different DID'
       });
     }
 
-    // SECURITY: Delete token (single-use)
+    // ✅ ALL CHECKS PASSED - Issue credential
     claimTokens.delete(claimToken.id);
     console.log('✅ Token validated and consumed');
-
-    // Issue credential
-    console.log('📜 Issuing credential to verified holder');
 
     const ethersSigner = await blockchainService.getSigner();
     const issuerAddress = await ethersSigner.getAddress();
@@ -572,8 +476,6 @@ router.post('/claim-credential', async (req, res) => {
     const { createVerifiableCredentialJwt } = require('did-jwt-vc');
     const jwt = await createVerifiableCredentialJwt(vcPayload, issuer);
 
-    console.log('✅ Credential issued successfully');
-
     const credential = {
       id: Date.now().toString(),
       issuer: issuerDID,
@@ -585,6 +487,19 @@ router.post('/claim-credential', async (req, res) => {
       claimTokenId: claimToken.id
     };
 
+    // ✅ MARK AS ISSUED - Store in issued credentials map
+    issuedCredentials.set(claimToken.studentId, {
+      credential: credential,
+      claimedAt: Date.now(),
+      claimedBy: holderDID,
+      studentId: claimToken.studentId,
+      studentName: claimToken.studentName
+    });
+
+    console.log('✅ Credential issued and marked as claimed');
+    console.log(`   Student: ${claimToken.studentName} (${claimToken.studentId})`);
+    console.log(`   Claimed by: ${holderDID}`);
+
     res.json({
       success: true,
       credential: credential,
@@ -593,6 +508,29 @@ router.post('/claim-credential', async (req, res) => {
 
   } catch (err) {
     console.error('❌ Failed to claim credential:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ NEW ENDPOINT: Check if student already has credential
+router.get('/check-issued/:studentId', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    if (issuedCredentials.has(studentId)) {
+      const issued = issuedCredentials.get(studentId);
+      res.json({
+        issued: true,
+        claimedAt: issued.claimedAt,
+        claimedBy: issued.claimedBy,
+        studentName: issued.studentName
+      });
+    } else {
+      res.json({
+        issued: false
+      });
+    }
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -610,7 +548,8 @@ router.get('/claim-status/:tokenId', async (req, res) => {
         exists: true,
         expired: isExpired,
         expiresAt: token.expiresAt,
-        used: token.used
+        used: token.used,
+        studentId: token.studentId
       });
     } else {
       res.json({
@@ -626,7 +565,7 @@ router.get('/claim-status/:tokenId', async (req, res) => {
 // ENDPOINT 4: Revoke claim token
 router.delete('/revoke-claim-token/:tokenId', async (req, res) => {
   try {
-    const { tokenId} = req.params;
+    const { tokenId } = req.params;
 
     if (claimTokens.has(tokenId)) {
       claimTokens.delete(tokenId);
