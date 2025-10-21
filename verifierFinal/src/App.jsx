@@ -1,5 +1,5 @@
 // verifier-frontend/src/App.jsx
-// COMPLETE FILE - Enhanced with History Details
+// COMPLETE FILE - Enhanced with Selective Disclosure Detection
 
 import { useState, useEffect } from 'react';
 import Header from './components/Header';
@@ -12,6 +12,23 @@ import {
   verifyPresentation,
   checkHealth
 } from './services/api';
+
+// Helper function to detect selective disclosure
+const isSelectiveDisclosure = (credential) => {
+  try {
+    if (typeof credential === 'string') {
+      const parts = credential.split('.');
+      const payload = JSON.parse(atob(parts[1]));
+      return payload.vc?.type?.includes('SelectiveDisclosure');
+    } else if (typeof credential === 'object') {
+      return credential.type?.includes('SelectiveDisclosure');
+    }
+  } catch (error) {
+    console.log(error.message); 
+    return false;
+  }
+  return false;
+};
 
 function App() {
   const [activeTab, setActiveTab] = useState('verify');
@@ -81,7 +98,7 @@ function App() {
               credentials: result?.verifiablePresentation?.verifiableCredential?.length || 0,
               holderName: holderName,
               holderDID: result?.verifiablePresentation?.holder,
-              fullResult: result // 🆕 Store the full result
+              fullResult: result
             });
             
             setActiveTab('history');
@@ -180,7 +197,7 @@ function App() {
         credentials: result.verifiablePresentation?.verifiableCredential?.length || 0,
         holderName: holderName,
         holderDID: result.verifiablePresentation?.holder,
-        fullResult: result // 🆕 Store the full result
+        fullResult: result
       });
       
       if (result.verified) {
@@ -211,7 +228,7 @@ function App() {
     setChallenge('');
     setVerificationResult(null);
   };
-
+  
   return (
     <div className="min-h-screen bg-gray-50">
       <Header verifierInfo={verifierInfo} isConnected={isConnected} />
@@ -379,7 +396,7 @@ function App() {
           </div>
         )}
 
-        {/* HISTORY TAB */}
+        {/* HISTORY TAB - ENHANCED WITH SELECTIVE DISCLOSURE DETECTION */}
         {activeTab === 'history' && (
           <div className="bg-white rounded-2xl shadow-lg p-8">
             <div className="mb-6">
@@ -442,10 +459,25 @@ function App() {
                       </div>
                     </div>
 
-                    {/* Show details for each verified entry */}
+                    {/* Show details for each verified entry - WITH SELECTIVE DISCLOSURE DETECTION */}
                     {entry.verified && entry.fullResult?.verifiablePresentation && (
                       <div className="border-t-2 border-green-300 bg-white p-6">
                         <h4 className="font-bold text-gray-900 mb-4 text-lg">📋 Credential Details</h4>
+                        
+                        {/* Check if selective disclosure at VP level */}
+                        {entry.fullResult.verifiablePresentation.type?.includes('SelectiveDisclosure') && (
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-2xl">🔒</span>
+                              <div>
+                                <div className="font-semibold text-blue-900">Selective Disclosure Presentation</div>
+                                <div className="text-sm text-blue-700">
+                                  The holder shared only selected fields, not complete credentials
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         
                         {entry.fullResult.verifiablePresentation.holder && (
                           <div className="bg-gray-50 rounded-lg p-4 mb-4 border border-gray-200">
@@ -458,6 +490,7 @@ function App() {
 
                         {entry.fullResult.verifiablePresentation.verifiableCredential?.map((cred, idx) => {
                           let credentialData = null;
+                          let isSelective = isSelectiveDisclosure(cred);
                           
                           try {
                             if (typeof cred === 'string') {
@@ -475,13 +508,34 @@ function App() {
                           }
 
                           return (
-                            <div key={idx} className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-4 border border-purple-200 mb-4">
-                              <h5 className="font-semibold text-purple-900 mb-3">
-                                Credential #{idx + 1}
-                              </h5>
+                            <div key={idx} className={`rounded-lg p-4 border mb-4 ${
+                              isSelective 
+                                ? 'bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200' 
+                                : 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200'
+                            }`}>
+                              <div className="flex justify-between items-start mb-3">
+                                <h5 className="font-semibold text-purple-900">
+                                  Credential #{idx + 1}
+                                </h5>
+                                {isSelective && (
+                                  <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded-full font-semibold">
+                                    🔒 SELECTIVE
+                                  </span>
+                                )}
+                              </div>
 
                               {credentialData && (
                                 <div className="space-y-2">
+                                  {isSelective && (
+                                    <div className="bg-blue-100 border border-blue-300 rounded p-2 mb-3">
+                                      <div className="text-xs text-blue-800 font-medium">
+                                        ℹ️ Only {Object.keys(credentialData).filter(key => 
+                                          !['id', '@context', 'type', 'proof', 'issuer', 'issuanceDate'].includes(key)
+                                        ).length} selected field(s) shared by holder
+                                      </div>
+                                    </div>
+                                  )}
+                                  
                                   {Object.entries(credentialData).map(([key, value]) => {
                                     if (key === 'id' || key === '@context' || key === 'type' || 
                                         key === 'proof' || key === 'issuer' || key === 'issuanceDate') {
@@ -517,6 +571,7 @@ function App() {
                                 timestamp: entry.timestamp,
                                 holderName: entry.holderName,
                                 holder: entry.holderDID,
+                                selectiveDisclosure: entry.fullResult.verifiablePresentation.type?.includes('SelectiveDisclosure') || false,
                                 credentials: entry.fullResult.verifiablePresentation.verifiableCredential.map((cred, i) => {
                                   let credData = null;
                                   try {
@@ -528,11 +583,12 @@ function App() {
                                       credData = cred.credentialSubject || cred;
                                     }
                                   } catch(error) {
-                                  console.log(error.message)
-                                }
+                                    console.log(error.message);
+                                  }
                                   
                                   return {
                                     credential: i + 1,
+                                    selective: isSelectiveDisclosure(cred),
                                     data: credData || cred
                                   };
                                 })
@@ -554,10 +610,13 @@ function App() {
                               report += `Status: VERIFIED ✓\n`;
                               report += `Date: ${new Date(entry.timestamp).toLocaleString()}\n`;
                               report += `Holder: ${entry.holderName || 'Unknown'}\n`;
-                              report += `DID: ${entry.holderDID}\n\n`;
+                              report += `DID: ${entry.holderDID}\n`;
+                              report += `Selective Disclosure: ${entry.fullResult.verifiablePresentation.type?.includes('SelectiveDisclosure') ? 'YES 🔒' : 'NO'}\n\n`;
                               
                               entry.fullResult.verifiablePresentation.verifiableCredential.forEach((cred, i) => {
                                 let credData = null;
+                                let isSelective = isSelectiveDisclosure(cred);
+                                
                                 try {
                                   if (typeof cred === 'string') {
                                     const parts = cred.split('.');
@@ -567,10 +626,10 @@ function App() {
                                     credData = cred.credentialSubject || cred;
                                   }
                                 } catch(error) {
-                                  console.log(error.message)
+                                  console.log(error.message);
                                 }
                                 
-                                report += `Credential ${i + 1}:\n`;
+                                report += `Credential ${i + 1}${isSelective ? ' [SELECTIVE DISCLOSURE]' : ''}:\n`;
                                 if (credData) {
                                   Object.entries(credData).forEach(([key, value]) => {
                                     if (key !== 'id' && key !== '@context' && key !== 'type' && 
@@ -581,6 +640,11 @@ function App() {
                                 }
                                 report += `\n`;
                               });
+                              
+                              if (entry.fullResult.verifiablePresentation.type?.includes('SelectiveDisclosure')) {
+                                report += `\n📌 NOTE: This was a selective disclosure verification.\n`;
+                                report += `The holder chose to share only specific fields, not the complete credentials.\n`;
+                              }
                               
                               const blob = new Blob([report], { type: 'text/plain' });
                               const url = URL.createObjectURL(blob);
