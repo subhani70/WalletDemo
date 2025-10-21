@@ -17,18 +17,18 @@ function App() {
   const [activeTab, setActiveTab] = useState('verify');
   const [verifierInfo, setVerifierInfo] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
-
+  
   // Verify tab states
   const [vpJwt, setVpJwt] = useState('');
   const [challenge, setChallenge] = useState('');
   const [verificationResult, setVerificationResult] = useState(null);
   const [isVerifying, setIsVerifying] = useState(false);
-
+  
   // Request tab states
   const [verificationSession, setVerificationSession] = useState(null);
   const [showQRModal, setShowQRModal] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
-
+  
   // History tab states
   const [verificationHistory, setVerificationHistory] = useState([]);
 
@@ -43,20 +43,21 @@ function App() {
       const interval = setInterval(async () => {
         try {
           const data = await getSessionStatus(verificationSession.id);
-
+          
           if (data.session && data.session.status === 'verified') {
-            setVerificationResult(data.session.verificationResult);
+            const result = data.session.verificationResult;
+            setVerificationResult(result);
             setIsPolling(false);
             setShowQRModal(false);
-
+            
             // Extract holder name
             let holderName = 'Unknown';
             try {
-              const creds = data.session.verificationResult?.verifiablePresentation?.verifiableCredential;
+              const creds = result?.verifiablePresentation?.verifiableCredential;
               if (creds && creds.length > 0) {
                 const firstCred = creds[0];
                 let credData = null;
-
+                
                 if (typeof firstCred === 'string') {
                   const parts = firstCred.split('.');
                   const payload = JSON.parse(atob(parts[1]));
@@ -64,7 +65,7 @@ function App() {
                 } else if (typeof firstCred === 'object') {
                   credData = firstCred.credentialSubject || firstCred;
                 }
-
+                
                 if (credData) {
                   holderName = credData.studentName || credData.name || credData.fullName || 'Unknown';
                 }
@@ -72,16 +73,17 @@ function App() {
             } catch (e) {
               console.error('Failed to extract holder name:', e);
             }
-
+            
             addToHistory({
               verified: true,
               challenge: data.session.challenge,
               timestamp: new Date().toISOString(),
-              credentials: data.session.verificationResult?.verifiablePresentation?.verifiableCredential?.length || 0,
+              credentials: result?.verifiablePresentation?.verifiableCredential?.length || 0,
               holderName: holderName,
-              holderDID: data.session.verificationResult?.verifiablePresentation?.holder
+              holderDID: result?.verifiablePresentation?.holder,
+              fullResult: result // 🆕 Store the full result
             });
-
+            
             setActiveTab('history');
           }
         } catch (error) {
@@ -120,7 +122,7 @@ function App() {
         'VoltusWave Verification Service',
         'Credential Verification'
       );
-
+      
       if (data.success) {
         setVerificationSession(data.session);
         setChallenge(data.session.challenge);
@@ -146,7 +148,7 @@ function App() {
     try {
       const result = await verifyPresentation(vpJwt, challenge || undefined);
       setVerificationResult(result);
-
+      
       // Extract holder name
       let holderName = 'Unknown';
       try {
@@ -154,7 +156,7 @@ function App() {
         if (creds && creds.length > 0) {
           const firstCred = creds[0];
           let credData = null;
-
+          
           if (typeof firstCred === 'string') {
             const parts = firstCred.split('.');
             const payload = JSON.parse(atob(parts[1]));
@@ -162,7 +164,7 @@ function App() {
           } else if (typeof firstCred === 'object') {
             credData = firstCred.credentialSubject || firstCred;
           }
-
+          
           if (credData) {
             holderName = credData.studentName || credData.name || credData.fullName || 'Unknown';
           }
@@ -170,22 +172,23 @@ function App() {
       } catch (e) {
         console.error('Failed to extract holder name:', e);
       }
-
+      
       addToHistory({
         verified: result.verified,
         challenge: challenge,
         timestamp: new Date().toISOString(),
         credentials: result.verifiablePresentation?.verifiableCredential?.length || 0,
         holderName: holderName,
-        holderDID: result.verifiablePresentation?.holder
+        holderDID: result.verifiablePresentation?.holder,
+        fullResult: result // 🆕 Store the full result
       });
-
+      
       if (result.verified) {
         setTimeout(() => {
           setActiveTab('history');
         }, 1500);
       }
-
+      
     } catch (error) {
       setVerificationResult({
         verified: false,
@@ -213,7 +216,7 @@ function App() {
     <div className="min-h-screen bg-gray-50">
       <Header verifierInfo={verifierInfo} isConnected={isConnected} />
       <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
-
+      
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* VERIFY TAB */}
         {activeTab === 'verify' && (
@@ -265,17 +268,19 @@ function App() {
             </div>
 
             {verificationResult && (
-              <div className={`rounded-xl p-6 mb-6 ${verificationResult.verified
-                  ? 'bg-green-50 border-2 border-green-200'
+              <div className={`rounded-xl p-6 mb-6 ${
+                verificationResult.verified 
+                  ? 'bg-green-50 border-2 border-green-200' 
                   : 'bg-red-50 border-2 border-red-200'
-                }`}>
+              }`}>
                 <div className="flex items-center space-x-4">
                   <div className="text-5xl">
                     {verificationResult.verified ? '✅' : '❌'}
                   </div>
                   <div>
-                    <h3 className={`text-2xl font-bold ${verificationResult.verified ? 'text-green-700' : 'text-red-700'
-                      }`}>
+                    <h3 className={`text-2xl font-bold ${
+                      verificationResult.verified ? 'text-green-700' : 'text-red-700'
+                    }`}>
                       {verificationResult.verified ? 'Verified Successfully!' : 'Verification Failed'}
                     </h3>
                     {verificationResult.verified ? (
@@ -345,10 +350,11 @@ function App() {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-600">Status:</span>
-                    <span className={`font-semibold ${verificationSession.status === 'verified' ? 'text-green-600' :
-                        verificationSession.status === 'failed' ? 'text-red-600' :
-                          'text-yellow-600'
-                      }`}>
+                    <span className={`font-semibold ${
+                      verificationSession.status === 'verified' ? 'text-green-600' :
+                      verificationSession.status === 'failed' ? 'text-red-600' :
+                      'text-yellow-600'
+                    }`}>
                       {verificationSession.status.toUpperCase()}
                     </span>
                   </div>
@@ -397,13 +403,14 @@ function App() {
               </div>
             ) : (
               <div className="space-y-6">
-                {verificationHistory.map((entry, entryIndex) => (
+                {verificationHistory.map((entry) => (
                   <div
                     key={entry.id}
-                    className={`rounded-xl border-2 overflow-hidden ${entry.verified
+                    className={`rounded-xl border-2 overflow-hidden ${
+                      entry.verified
                         ? 'bg-green-50 border-green-200'
                         : 'bg-red-50 border-red-200'
-                      }`}
+                    }`}
                   >
                     <div className="p-6">
                       <div className="flex items-start justify-between">
@@ -412,8 +419,9 @@ function App() {
                             {entry.verified ? '✅' : '❌'}
                           </div>
                           <div>
-                            <div className={`text-2xl font-bold ${entry.verified ? 'text-green-700' : 'text-red-700'
-                              }`}>
+                            <div className={`text-2xl font-bold ${
+                              entry.verified ? 'text-green-700' : 'text-red-700'
+                            }`}>
                               {entry.verified ? 'Verified' : 'Failed'}
                             </div>
                             <div className="text-sm text-gray-600 mt-1">
@@ -434,23 +442,23 @@ function App() {
                       </div>
                     </div>
 
-                    {/* Show details for most recent verified entry */}
-                    {entry.verified && entryIndex === 0 && verificationResult?.verifiablePresentation && (
+                    {/* Show details for each verified entry */}
+                    {entry.verified && entry.fullResult?.verifiablePresentation && (
                       <div className="border-t-2 border-green-300 bg-white p-6">
                         <h4 className="font-bold text-gray-900 mb-4 text-lg">📋 Credential Details</h4>
-
-                        {verificationResult.verifiablePresentation.holder && (
+                        
+                        {entry.fullResult.verifiablePresentation.holder && (
                           <div className="bg-gray-50 rounded-lg p-4 mb-4 border border-gray-200">
                             <div className="text-sm text-gray-600 mb-1">Holder DID:</div>
                             <div className="font-mono text-xs text-gray-900 break-all">
-                              {verificationResult.verifiablePresentation.holder}
+                              {entry.fullResult.verifiablePresentation.holder}
                             </div>
                           </div>
                         )}
 
-                        {verificationResult.verifiablePresentation.verifiableCredential?.map((cred, idx) => {
+                        {entry.fullResult.verifiablePresentation.verifiableCredential?.map((cred, idx) => {
                           let credentialData = null;
-
+                          
                           try {
                             if (typeof cred === 'string') {
                               const parts = cred.split('.');
@@ -475,15 +483,15 @@ function App() {
                               {credentialData && (
                                 <div className="space-y-2">
                                   {Object.entries(credentialData).map(([key, value]) => {
-                                    if (key === 'id' || key === '@context' || key === 'type' ||
-                                      key === 'proof' || key === 'issuer' || key === 'issuanceDate') {
+                                    if (key === 'id' || key === '@context' || key === 'type' || 
+                                        key === 'proof' || key === 'issuer' || key === 'issuanceDate') {
                                       return null;
                                     }
-
+                                    
                                     if (typeof value === 'object' && value !== null) {
                                       return null;
                                     }
-
+                                    
                                     return (
                                       <div key={key} className="grid grid-cols-3 gap-2">
                                         <span className="text-sm font-medium text-gray-600 capitalize">
@@ -509,7 +517,7 @@ function App() {
                                 timestamp: entry.timestamp,
                                 holderName: entry.holderName,
                                 holder: entry.holderDID,
-                                credentials: verificationResult.verifiablePresentation.verifiableCredential.map((cred, i) => {
+                                credentials: entry.fullResult.verifiablePresentation.verifiableCredential.map((cred, i) => {
                                   let credData = null;
                                   try {
                                     if (typeof cred === 'string') {
@@ -519,10 +527,10 @@ function App() {
                                     } else if (typeof cred === 'object') {
                                       credData = cred.credentialSubject || cred;
                                     }
-                                  } catch (error) {
-                                    console.log(error.message)
-                                  }
-
+                                  } catch(error) {
+                                  console.log(error.message)
+                                }
+                                  
                                   return {
                                     credential: i + 1,
                                     data: credData || cred
@@ -547,8 +555,8 @@ function App() {
                               report += `Date: ${new Date(entry.timestamp).toLocaleString()}\n`;
                               report += `Holder: ${entry.holderName || 'Unknown'}\n`;
                               report += `DID: ${entry.holderDID}\n\n`;
-
-                              verificationResult.verifiablePresentation.verifiableCredential.forEach((cred, i) => {
+                              
+                              entry.fullResult.verifiablePresentation.verifiableCredential.forEach((cred, i) => {
                                 let credData = null;
                                 try {
                                   if (typeof cred === 'string') {
@@ -558,22 +566,22 @@ function App() {
                                   } else if (typeof cred === 'object') {
                                     credData = cred.credentialSubject || cred;
                                   }
-                                } catch (error) {
+                                } catch(error) {
                                   console.log(error.message)
                                 }
-
+                                
                                 report += `Credential ${i + 1}:\n`;
                                 if (credData) {
                                   Object.entries(credData).forEach(([key, value]) => {
-                                    if (key !== 'id' && key !== '@context' && key !== 'type' &&
-                                      key !== 'proof' && key !== 'issuer' && key !== 'issuanceDate') {
+                                    if (key !== 'id' && key !== '@context' && key !== 'type' && 
+                                        key !== 'proof' && key !== 'issuer' && key !== 'issuanceDate') {
                                       report += `  ${key}: ${value}\n`;
                                     }
                                   });
                                 }
                                 report += `\n`;
                               });
-
+                              
                               const blob = new Blob([report], { type: 'text/plain' });
                               const url = URL.createObjectURL(blob);
                               const a = document.createElement('a');
