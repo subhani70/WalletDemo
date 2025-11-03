@@ -1,6 +1,6 @@
 // verifier-frontend/src/services/api.js
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = 'https://icbhyhmetd.execute-api.ap-south-1.amazonaws.com/';
 
 /**
  * Get verifier information
@@ -8,11 +8,11 @@ const API_BASE_URL = 'http://localhost:5000';
 export async function fetchVerifierInfo() {
   try {
     const response = await fetch(`${API_BASE_URL}/verifier/info`);
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
     const data = await response.json();
     return data;
   } catch (error) {
@@ -37,11 +37,11 @@ export async function createVerificationRequest(requestedCredentials, verifierNa
         purpose
       }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
     const data = await response.json();
     return data;
   } catch (error) {
@@ -56,11 +56,11 @@ export async function createVerificationRequest(requestedCredentials, verifierNa
 export async function getSessionStatus(sessionId) {
   try {
     const response = await fetch(`${API_BASE_URL}/verifier/session/${sessionId}`);
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
     const data = await response.json();
     return data;
   } catch (error) {
@@ -84,11 +84,11 @@ export async function verifyPresentation(vpJwt, challenge) {
         challenge: challenge || undefined
       }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
     const data = await response.json();
     return data;
   } catch (error) {
@@ -103,11 +103,11 @@ export async function verifyPresentation(vpJwt, challenge) {
 export async function checkHealth() {
   try {
     const response = await fetch(`${API_BASE_URL}/health`);
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
     const data = await response.json();
     return data;
   } catch (error) {
