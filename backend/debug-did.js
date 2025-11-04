@@ -10,7 +10,7 @@ const { getResolver } = require('ethr-did-resolver');
 require('dotenv').config();
 
 const config = {
-  rpcUrl: process.env.RPC_URL || 'http://localhost:8545',
+  rpcUrl: process.env.RPC_URL ,
   registryAddress: process.env.REGISTRY_ADDRESS,
   networkName: 'VoltusWave',
   chainId: 1337

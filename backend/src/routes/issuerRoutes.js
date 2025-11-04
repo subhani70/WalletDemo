@@ -6,9 +6,14 @@ const { createVerifiableCredentialJwt } = require('did-jwt-vc');
 const blockchainService = require('../services/blockchainService');
 const didService = require('../services/didService');
 const { v4: uuidv4 } = require('uuid');
+const config = require('../config/config');
 
-// Issuer's DID and keys (from environment or config)
-const ISSUER_DID = process.env.ISSUER_DID || 'did:ethr:VoltusWave:0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1';
+// Helper function to get issuer DID dynamically from signer's address
+async function getIssuerDID() {
+  const signer = await blockchainService.getSigner();
+  const address = await signer.getAddress();
+  return `did:ethr:${config.networkName}:${address.toLowerCase()}`;
+}
 
 // ============================================
 // 1. Get Issuer Info
@@ -17,11 +22,12 @@ router.get('/issuer/info', async (req, res) => {
   try {
     const signer = await blockchainService.getSigner();
     const address = await signer.getAddress();
+    const issuerDID = await getIssuerDID();
     
     res.json({
       success: true,
       issuer: {
-        did: ISSUER_DID,
+        did: issuerDID,
         address: address,
         name: 'VoltusWave University', // Customize this
         type: 'Educational Institution',
@@ -55,6 +61,7 @@ router.post('/issuer/issue', async (req, res) => {
     const ethersSigner = await blockchainService.getSigner();
     const privateKey = ethersSigner.privateKey.slice(2);
     const signer = ES256KSigner(Buffer.from(privateKey, 'hex'));
+    const issuerDID = await getIssuerDID();
 
     // Build credential payload
     const vcPayload = {
@@ -72,7 +79,7 @@ router.post('/issuer/issue', async (req, res) => {
 
     // Sign credential as issuer
     const issuer = {
-      did: ISSUER_DID,
+      did: issuerDID,
       signer: signer,
       alg: 'ES256K'
     };
@@ -81,7 +88,7 @@ router.post('/issuer/issue', async (req, res) => {
 
     const credential = {
       id: uuidv4(),
-      issuer: ISSUER_DID,
+      issuer: issuerDID,
       subject: subjectDID,
       type: credentialType,
       claims: claims,
@@ -143,6 +150,7 @@ async function issueCredential(subjectDID, credentialType, claims) {
   const ethersSigner = await blockchainService.getSigner();
   const privateKey = ethersSigner.privateKey.slice(2);
   const signer = ES256KSigner(Buffer.from(privateKey, 'hex'));
+  const issuerDID = await getIssuerDID();
 
   const vcPayload = {
     sub: subjectDID,
@@ -158,7 +166,7 @@ async function issueCredential(subjectDID, credentialType, claims) {
   };
 
   const issuer = {
-    did: ISSUER_DID,
+    did: issuerDID,
     signer: signer,
     alg: 'ES256K'
   };
@@ -167,7 +175,7 @@ async function issueCredential(subjectDID, credentialType, claims) {
 
   return {
     id: uuidv4(),
-    issuer: ISSUER_DID,
+    issuer: issuerDID,
     subject: subjectDID,
     type: credentialType,
     claims: claims,
