@@ -379,42 +379,103 @@ router.post('/claim-credential', async (req, res) => {
     const { claimToken, holderDID } = req.body;
 
     if (!claimToken || !holderDID) {
+      console.error('[CLAIM-CREDENTIAL] Missing required fields', {
+        hasClaimToken: !!claimToken,
+        hasHolderDID: !!holderDID,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({
-        error: 'Missing required fields: claimToken, holderDID'
+        success: false,
+        error: 'Missing required fields',
+        message: 'Both claimToken and holderDID are required.',
+        code: 'MISSING_REQUIRED_FIELDS'
       });
     }
 
-    console.log('📥 Claim request received');
-    console.log('   Token ID:', claimToken.id);
-    console.log('   Holder DID:', holderDID);
-    console.log('   Student ID:', claimToken.studentId);
+    console.log('[CLAIM-CREDENTIAL] Claim request received', {
+      tokenId: claimToken.id,
+      holderDID: holderDID,
+      studentId: claimToken.studentId,
+      timestamp: new Date().toISOString()
+    });
 
     // ✅ CHECK 1: Has this student already claimed?
     if (issuedCredentials.has(claimToken.studentId)) {
       const issued = issuedCredentials.get(claimToken.studentId);
-      console.log('❌ Student already has credential');
+      console.warn('[CLAIM-CREDENTIAL] Student already has credential', {
+        studentId: claimToken.studentId,
+        studentName: claimToken.studentName,
+        previouslyClaimedAt: issued.claimedAt,
+        previouslyClaimedBy: issued.claimedBy,
+        timestamp: new Date().toISOString()
+      });
       return res.status(409).json({
-        error: 'You have already claimed this credential.',
+        success: false,
+        error: 'Credential already claimed',
+        message: 'You have already claimed this credential.',
+        code: 'CREDENTIAL_ALREADY_CLAIMED',
         claimedAt: issued.claimedAt,
         claimedBy: issued.claimedBy
       });
     }
 
     // CHECK 2: Holder DID registered?
-    const holderAddress = extractAddressFromDID(holderDID);
-    const holderRegistered = await isDIDRegistered(holderAddress);
-    
-    if (!holderRegistered) {
-      return res.status(403).json({
-        error: 'Your DID is not registered on blockchain. Please create your identity first.'
+    let holderAddress;
+    try {
+      holderAddress = extractAddressFromDID(holderDID);
+      console.log('[CLAIM-CREDENTIAL] Checking holder DID registration', {
+        holderDID: holderDID,
+        holderAddress: holderAddress,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('[CLAIM-CREDENTIAL] Invalid holder DID format', {
+        holderDID: holderDID,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid holder DID format',
+        message: 'The holder DID has an invalid format.',
+        code: 'INVALID_HOLDER_DID_FORMAT'
       });
     }
 
+    const holderRegistered = await isDIDRegistered(holderAddress);
+    
+    if (!holderRegistered) {
+      console.error('[CLAIM-CREDENTIAL] Holder DID not registered on blockchain', {
+        holderDID: holderDID,
+        holderAddress: holderAddress,
+        timestamp: new Date().toISOString()
+      });
+      return res.status(403).json({
+        success: false,
+        error: 'Holder DID not registered',
+        message: 'Your DID is not registered on blockchain. Please create your identity first.',
+        code: 'HOLDER_DID_NOT_REGISTERED'
+      });
+    }
+
+    console.log('[CLAIM-CREDENTIAL] Holder DID validated and registered', {
+      holderDID: holderDID,
+      holderAddress: holderAddress,
+      timestamp: new Date().toISOString()
+    });
+
     // CHECK 3: Token exists?
     if (!claimTokens.has(claimToken.id)) {
-      console.log('❌ Invalid or already used token');
+      console.error('[CLAIM-CREDENTIAL] Invalid or already used token', {
+        tokenId: claimToken.id,
+        studentId: claimToken.studentId,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({
-        error: 'Invalid or already used claim token'
+        success: false,
+        error: 'Invalid or already used claim token',
+        message: 'The claim token is invalid or has already been used.',
+        code: 'INVALID_OR_USED_TOKEN'
       });
     }
 
@@ -423,39 +484,155 @@ router.post('/claim-credential', async (req, res) => {
     // CHECK 4: Expired?
     if (Date.now() > storedToken.expiresAt) {
       claimTokens.delete(claimToken.id);
-      console.log('❌ Claim token expired');
+      console.error('[CLAIM-CREDENTIAL] Claim token expired', {
+        tokenId: claimToken.id,
+        expiresAt: storedToken.expiresAt,
+        currentTime: Date.now(),
+        studentId: claimToken.studentId,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({
-        error: 'Claim token has expired. Please request a new one.'
+        success: false,
+        error: 'Claim token expired',
+        message: 'The claim token has expired. Please request a new one.',
+        code: 'TOKEN_EXPIRED'
       });
     }
 
     // CHECK 5: Nonce matches?
     if (storedToken.nonce !== claimToken.nonce) {
-      console.log('❌ Token tampering detected');
+      console.error('[CLAIM-CREDENTIAL] Token tampering detected', {
+        tokenId: claimToken.id,
+        expectedNonce: storedToken.nonce,
+        receivedNonce: claimToken.nonce,
+        studentId: claimToken.studentId,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({
-        error: 'Token validation failed'
+        success: false,
+        error: 'Token validation failed',
+        message: 'Token validation failed. The token may have been tampered with.',
+        code: 'TOKEN_VALIDATION_FAILED'
       });
     }
 
     // CHECK 6: DID matches?
     if (storedToken.requiredDID && storedToken.requiredDID !== holderDID) {
-      console.log('❌ DID mismatch');
+      console.error('[CLAIM-CREDENTIAL] DID mismatch', {
+        tokenId: claimToken.id,
+        requiredDID: storedToken.requiredDID,
+        providedDID: holderDID,
+        studentId: claimToken.studentId,
+        timestamp: new Date().toISOString()
+      });
       return res.status(403).json({
-        error: 'This credential is intended for a different DID'
+        success: false,
+        error: 'DID mismatch',
+        message: 'This credential is intended for a different DID.',
+        code: 'DID_MISMATCH',
+        requiredDID: storedToken.requiredDID
       });
     }
 
     // ✅ ALL CHECKS PASSED - Issue credential
     claimTokens.delete(claimToken.id);
-    console.log('✅ Token validated and consumed');
+    console.log('[CLAIM-CREDENTIAL] Token validated and consumed', {
+      tokenId: claimToken.id,
+      studentId: claimToken.studentId,
+      timestamp: new Date().toISOString()
+    });
 
+    // ✅ REQUIRED: Issuer DID must be present in claimToken (from university frontend/QR token)
+    const issuerDID = storedToken.issuerDID || claimToken.issuerDID;
+    
+    if (!issuerDID) {
+      console.error('[CLAIM-CREDENTIAL] Missing issuer DID in claim token', {
+        tokenId: claimToken.id,
+        studentId: claimToken.studentId,
+        timestamp: new Date().toISOString()
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'Issuer DID is required in claim token',
+        message: 'The claim token must include the issuer DID from the university. Please contact the credential issuer.',
+        code: 'MISSING_ISSUER_DID',
+        tokenId: claimToken.id
+      });
+    }
+
+    console.log('[CLAIM-CREDENTIAL] Issuer DID extracted from claim token', {
+      issuerDID: issuerDID,
+      tokenId: claimToken.id,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Validate that issuer DID is registered on blockchain
+    let issuerAddress;
+    try {
+      issuerAddress = extractAddressFromDID(issuerDID);
+      console.log('[CLAIM-CREDENTIAL] Extracted issuer address', {
+        issuerDID: issuerDID,
+        issuerAddress: issuerAddress,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('[CLAIM-CREDENTIAL] Invalid issuer DID format', {
+        issuerDID: issuerDID,
+        error: error.message,
+        tokenId: claimToken.id,
+        timestamp: new Date().toISOString()
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid issuer DID format',
+        message: 'The issuer DID in the claim token has an invalid format.',
+        code: 'INVALID_ISSUER_DID_FORMAT',
+        issuerDID: issuerDID
+      });
+    }
+
+    console.log('[CLAIM-CREDENTIAL] Checking issuer DID registration on blockchain', {
+      issuerDID: issuerDID,
+      issuerAddress: issuerAddress,
+      timestamp: new Date().toISOString()
+    });
+
+    const issuerRegistered = await isDIDRegistered(issuerAddress);
+    
+    if (!issuerRegistered) {
+      console.error('[CLAIM-CREDENTIAL] Issuer DID not registered on blockchain', {
+        issuerDID: issuerDID,
+        issuerAddress: issuerAddress,
+        tokenId: claimToken.id,
+        timestamp: new Date().toISOString()
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'Issuer DID not registered on blockchain',
+        message: 'The issuer DID from the claim token is not registered on the blockchain. The credential cannot be issued.',
+        code: 'ISSUER_DID_NOT_REGISTERED',
+        issuerDID: issuerDID
+      });
+    }
+
+    console.log('[CLAIM-CREDENTIAL] Issuer DID validated and registered', {
+      issuerDID: issuerDID,
+      issuerAddress: issuerAddress,
+      timestamp: new Date().toISOString()
+    });
+
+    // Get signer - using backend signer
+    // Note: If issuerDID is from university, you may need their private key or delegation
     const ethersSigner = await blockchainService.getSigner();
-    const issuerAddress = await ethersSigner.getAddress();
-    const issuerDID = `did:ethr:VoltusWave:${issuerAddress.toLowerCase()}`;
-
     const privateKey = ethersSigner.privateKey.slice(2);
     const { ES256KSigner } = require('did-jwt');
     const signer = ES256KSigner(Buffer.from(privateKey, 'hex'));
+    
+    console.log('[CLAIM-CREDENTIAL] Preparing credential payload', {
+      issuerDID: issuerDID,
+      subjectDID: holderDID,
+      timestamp: new Date().toISOString()
+    });
 
     const vcPayload = {
       sub: holderDID,
@@ -474,7 +651,36 @@ router.post('/claim-credential', async (req, res) => {
     };
 
     const { createVerifiableCredentialJwt } = require('did-jwt-vc');
-    const jwt = await createVerifiableCredentialJwt(vcPayload, issuer);
+    
+    console.log('[CLAIM-CREDENTIAL] Creating verifiable credential JWT', {
+      issuerDID: issuerDID,
+      subjectDID: holderDID,
+      timestamp: new Date().toISOString()
+    });
+
+    let jwt;
+    try {
+      jwt = await createVerifiableCredentialJwt(vcPayload, issuer);
+      console.log('[CLAIM-CREDENTIAL] Verifiable credential JWT created successfully', {
+        issuerDID: issuerDID,
+        subjectDID: holderDID,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('[CLAIM-CREDENTIAL] Failed to create verifiable credential JWT', {
+        issuerDID: issuerDID,
+        subjectDID: holderDID,
+        error: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create verifiable credential',
+        message: 'An error occurred while creating the credential. Please try again or contact support.',
+        code: 'CREDENTIAL_CREATION_FAILED'
+      });
+    }
 
     const credential = {
       id: Date.now().toString(),
@@ -496,9 +702,15 @@ router.post('/claim-credential', async (req, res) => {
       studentName: claimToken.studentName
     });
 
-    console.log('✅ Credential issued and marked as claimed');
-    console.log(`   Student: ${claimToken.studentName} (${claimToken.studentId})`);
-    console.log(`   Claimed by: ${holderDID}`);
+    console.log('[CLAIM-CREDENTIAL] Credential issued and marked as claimed', {
+      credentialId: credential.id,
+      issuerDID: issuerDID,
+      subjectDID: holderDID,
+      studentId: claimToken.studentId,
+      studentName: claimToken.studentName,
+      claimedBy: holderDID,
+      timestamp: new Date().toISOString()
+    });
 
     res.json({
       success: true,
@@ -507,8 +719,19 @@ router.post('/claim-credential', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('❌ Failed to claim credential:', err);
-    res.status(500).json({ error: err.message });
+    console.error('[CLAIM-CREDENTIAL] Unexpected error during credential claim', {
+      error: err.message,
+      stack: err.stack,
+      tokenId: claimToken?.id,
+      studentId: claimToken?.studentId,
+      timestamp: new Date().toISOString()
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: 'An unexpected error occurred while processing your credential claim. Please try again or contact support.',
+      code: 'INTERNAL_SERVER_ERROR'
+    });
   }
 });
 
